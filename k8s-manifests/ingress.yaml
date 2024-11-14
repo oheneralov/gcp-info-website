@@ -1,0 +1,45 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-prefix
+  namespace: default
+spec:
+  stripPrefix:
+    prefixes:
+      - "/prefix"
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: service1-ingress
+  namespace: default
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`oleksandrdesign.com`)
+      kind: Rule
+      services:
+        - name: service1
+          port: 80
+      middlewares:
+        - name: strip-prefix
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: service2-ingress
+  namespace: default
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`service2.oleksandrdesign.com`)
+      kind: Rule
+      services:
+        - name: service2
+          port: 80
+          
