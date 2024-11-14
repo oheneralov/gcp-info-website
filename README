@@ -19,11 +19,13 @@ kubectl apply -f k8s-manifests/ingress.yaml
 # rollout
 kubectl rollout restart deploy service1
 
-# Deploy the Helm Chart
+# Deploy using the Helm Chart
 helm install helm-dir ./helm-dir
 
 #You can update your deployment with:
-helm upgrade my-express-app ./my-express-app
+helm upgrade helm-dir ./helm-dir
+or
+helm upgrade -f panda.yaml happy-panda bitnami/wordpress
 
 #Check if all pods and services are running properly:
 helm list  Lists all Helm releases and their status.

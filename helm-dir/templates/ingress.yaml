@@ -42,5 +42,4 @@ spec:
       services:
         - name: service2
           port: 80
-      middlewares:
-        - name: strip-prefix
+          
