@@ -1,0 +1,179 @@
+#Build and push images to Docker Hub
+# In service1 directory
+docker build -t gcr.io/clever-spirit-417020/service1:latest .
+docker push gcr.io/clever-spirit-417020/service1:latest
+# In service2 directory
+docker build -t gcr.io/clever-spirit-417020/service2:latest .
+docker push gcr.io/clever-spirit-417020/service2:latest
+
+
+#Apply the deployments and services to your Kubernetes cluster:
+kubectl apply -f k8s-manifests/service1-deployment.yaml
+kubectl apply -f k8s-manifests/service1-service.yaml
+kubectl apply -f k8s-manifests/service2-deployment.yaml
+kubectl apply -f k8s-manifests/service2-service.yaml
+
+#Apply the ingress to the cluster:
+kubectl apply -f k8s-manifests/ingress.yaml
+
+# rollout
+kubectl rollout restart deploy service1
+
+# Deploy the Helm Chart
+helm install helm-dir ./helm-dir
+
+#You can update your deployment with:
+helm upgrade my-express-app ./my-express-app
+
+#Check if all pods and services are running properly:
+helm list  Lists all Helm releases and their status.
+kubectl get pods
+kubectl get svc
+kubectl get ingress
+
+# Install Traefik:
+helm install traefik traefik/traefik --set service.type=LoadBalancer
+
+# chatgpt
+provide guidelines how to implement the algorithm: 
+Count trailing zeroes in factorial of a number. Provide the code in javascript and python.
+
+# Delete the Ingress Resource
+# Option 1: Delete the Ingress Resource
+# This will stop Traefik from routing traffic to your services based on the specified ingress rules. However, Traefik will still be running in your cluster, which may be useful if you plan to reconfigure or redeploy it.
+kubectl delete ingress service1-ingress service2-ingress
+
+# Option 2: Delete the Traefik Deployment
+#If you want to completely stop Traefik, you can delete its deployment.
+
+#First, identify the namespace where Traefik is deployed (usually traefik or kube-system).
+#Delete the Traefik deployment and any associated resources:
+
+kubectl delete deployment -n <traefik-namespace> traefik
+Replace <traefik-namespace> with the namespace where Traefik is installed (e.g., traefik or kube-system).
+
+#Option 3: Scale Down the Traefik Deployment
+#Scaling down Traefik to zero replicas is a quick way to stop it temporarily without deleting the deployment.
+
+kubectl scale deployment -n <traefik-namespace> traefik --replicas=0
+
+#To restart Traefik, simply scale it back up:
+kubectl scale deployment -n <traefik-namespace> traefik --replicas=1
+
+#Option 4: Remove Traefik Ingress Controller Completely
+#If you want to completely remove Traefik from your cluster, you can delete all Traefik-related resources (e.g., deployment, service, and config maps). Make sure to check Traefik’s documentation for any additional resources that might need to be removed.
+kubectl delete all -n <traefik-namespace> -l app=traefik
+
+# Ingress route
+Host Matching:
+
+The match field specifies that service1 will respond to requests on oleksandrdesign.com, and service2 will respond to requests on service2.oleksandrdesign.com.
+The syntax Host(<hostname>) is specific to Traefik, and it defines rules based on the requested host header.
+Entrypoints:
+
+entryPoints: - web tells Traefik to use the web entrypoint (which usually handles HTTP traffic on port 80). If you are using HTTPS, change it to websecure.
+Service Backend:
+
+Each IngressRoute points to a service by its name and port. Ensure that the service1 and service2 services are deployed in the same namespace (e.g., default) and are accessible on the specified port (in this case, 80).
+Namespaces:
+
+Both IngressRoute resources are deployed in the default namespace. Adjust this if your services are in a different namespace.
+
+
+## To roll back a deployment in Kubernetes to a previous version, you can use the following command:
+kubectl rollout undo deployment/service1
+
+##Rollback to a Specific Revision: If you want to roll back to a specific revision, you can first list the revision history to identify which one you want to roll back to:
+kubectl rollout history deployment/service1
+
+## This will show you a list of revisions. Then, you can roll back to a specific revision using:
+kubectl rollout undo deployment/service1 --to-revision=<revision_number>
+Replace <revision_number> with the desired revision number from the history.
+
+## Check the Status of the Rollback
+To ensure the rollback was successful, check the status of the deployment:
+kubectl rollout status deployment/service1
+View the Current State
+You can also view the current state of your deployment to verify the rollback:
+kubectl get deployment service1
+
+#Notes for Helm Upgrade and Deletion
+#Update/Upgrade Your Deployment If you make changes to your Helm chart (e.g., update the values.yaml or other configuration files), you can upgrade your deployment using:
+helm upgrade my-express-app ./my-express-app
+
+#Delete the Deployment If you want to remove your deployment, use:
+helm uninstall my-express-app
+
+#Troubleshooting
+#Pod Errors: Check the logs of your pods if they’re not running correctly:
+kubectl logs <pod-name>
+
+Ingress Issues: Ensure Traefik is configured correctly and the ingress rules are working as expected.
+Helm Errors: Use helm status my-express-app to get more details about your deployment.
+
+How to Check IngressRoute Resources
+To list and get details about Traefik's IngressRoute resources, use the following commands:
+
+List All IngressRoutes
+
+bash
+Skopiuj kod
+kubectl get ingressroute
+This will show you all the IngressRoute resources that have been deployed in your Kubernetes cluster.
+
+Get Details of a Specific IngressRoute
+
+bash
+Skopiuj kod
+kubectl describe ingressroute <name-of-your-ingressroute>
+Replace <name-of-your-ingressroute> with the name of your IngressRoute object to get more details, including any potential issues.
+
+Steps to Troubleshoot
+Check if Traefik is Running Ensure that the Traefik ingress controller is up and running:
+
+bash
+Skopiuj kod
+kubectl get pods -n traefik
+If Traefik is not running, check your Traefik deployment configuration and ensure it’s correctly installed and deployed.
+Verify Traefik Custom Resource Definitions (CRDs) Check if the necessary CRDs for Traefik (IngressRoute, Middleware, etc.) are installed:
+
+bash
+Skopiuj kod
+kubectl get crd
+You should see resources like ingressroutes.traefik.io, middlewares.traefik.io, and other Traefik-related CRDs.
+
+Review Your IngressRoute Configuration
+
+Open the k8s-manifests/ingress.yaml file and double-check that the configuration matches your requirements.
+Ensure that the IngressRoute is correctly pointing to your services and using the right entry points (e.g., web for HTTP or websecure for HTTPS).
+Check Logs for Errors Check the logs of the Traefik ingress controller for any errors or warnings:
+
+bash
+Skopiuj kod
+kubectl logs -n traefik <traefik-pod-name>
+Replace <traefik-pod-name> with the name of your Traefik pod.
+
+Example of an IngressRoute for Traefik
+Make sure your IngressRoute definition looks something like this:
+
+yaml
+Skopiuj kod
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: service1-ingress
+  namespace: default
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`your-domain.com`)
+      kind: Rule
+      services:
+        - name: service1
+          port: 80
+entryPoints: Ensure these match the entry points configured in your Traefik setup.
+match: The rule for routing traffic. Replace your-domain.com with your actual domain or IP.
+Next Steps
+If everything looks correct but traffic isn’t routing as expected, ensure your DNS settings point to the correct IP of your Traefik ingress.
+If you still experience issues, try recreating your IngressRoute or reinstalling Traefik to see if that resolves the problem.
