@@ -27,14 +27,22 @@ helm upgrade helm-dir ./helm-dir
 or
 helm upgrade -f panda.yaml happy-panda bitnami/wordpress
 
+# Traefik
+### Upgrade traefik
+helm upgrade traefik traefik/traefik -f treafik.yaml
+### View traefik configuration
+kubectl describe service traefik -n default
+# Install Traefik:
+helm install traefik traefik/traefik --set service.type=LoadBalancer
+# If you need to get the current values from your deployment, run:
+helm get values traefik -n default > values.yaml
+
+
 #Check if all pods and services are running properly:
 helm list  Lists all Helm releases and their status.
 kubectl get pods
 kubectl get svc
 kubectl get ingress
-
-# Install Traefik:
-helm install traefik traefik/traefik --set service.type=LoadBalancer
 
 # chatgpt
 provide guidelines how to implement the algorithm: 
@@ -179,3 +187,13 @@ match: The rule for routing traffic. Replace your-domain.com with your actual do
 Next Steps
 If everything looks correct but traffic isn’t routing as expected, ensure your DNS settings point to the correct IP of your Traefik ingress.
 If you still experience issues, try recreating your IngressRoute or reinstalling Traefik to see if that resolves the problem.
+
+### Create a static address
+gcloud compute addresses create websitestatic2 --region=europe-west1
+### Get addresses
+gcloud compute addresses list
+
+# Minify CSS
+css-minify --file filename
+css-minify -d sourcedir -o distdir
+
