@@ -18,6 +18,13 @@ spec:
         imagePullPolicy: Always
         ports:
         - containerPort: 3000
+        env:
+          - name: recaptcha_key
+            valueFrom:
+              secretKeyRef:
+                name: recaptcha # Name of the Secret
+                key: recaptcha   # Key in the Secret
+
 
 ---
 apiVersion: apps/v1

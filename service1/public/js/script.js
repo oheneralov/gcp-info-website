@@ -988,7 +988,8 @@
 							grecaptcha.reset();
 						}
 
-						result = result.length === 5 ? result : 'MF255';
+						console.log('	result: ' + Object.keys(result));
+						result = result.message
 						output.text(msg[result]);
 
 						if (result === "MF000") {
@@ -1012,6 +1013,7 @@
 						}
 
 						form.find('input, textarea').trigger('blur');
+						grecaptcha.reset();
 
 						setTimeout(function () {
 							output.removeClass("active error success");
