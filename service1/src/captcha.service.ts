@@ -5,11 +5,15 @@ import axios from 'axios';
 export class CaptchaService {
   private readonly recaptchaVerifyUrl = 'https://www.google.com/recaptcha/api/siteverify';
 
+  getSecret(): string {
+    return process.env.recaptcha_key || 'default';
+  }
+
   async verifyCaptcha(token: string): Promise<boolean> {
     try {
       const response = await axios.post(this.recaptchaVerifyUrl, null, {
         params: {
-          secret: '6Lc3n40qAAAAAE8oPWTHHL0XrgB3KqjcB8k5wkme', // Store this securely
+          secret: this.getSecret(), // Store this securely
           response: token,
         },
       });
