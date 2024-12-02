@@ -1,12 +1,9 @@
 # values.yaml for Traefik Helm Chart
 
-# Configure the service to use an external load balancer with a static IP
+# Configure the service to use ip address
 service:
   enabled: true
-  type: LoadBalancer
-  annotations:
-    cloud.google.com/load-balancer-type: "External"
-  loadBalancerIP: "104.155.90.69"  # Replace with your reserved static IP
+  type: ClusterIP
 
 # Configure entry points for HTTP and HTTPS
 entryPoints:
@@ -18,7 +15,7 @@ entryPoints:
 # Enable Traefik dashboard (optional)
 api:
   dashboard: true
-  insecure: true  # Set to false and secure with authentication in production
+  insecure: false  # Set to false and secure with authentication in production
 
 # Enable the Traefik provider for Kubernetes CRD
 providers:
