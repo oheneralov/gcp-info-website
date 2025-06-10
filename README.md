@@ -1,21 +1,21 @@
-#Build and push images to Docker Hub
-# In service1 directory
+# Build and push images to Docker Hub
+## In service1 directory
 docker build -t gcr.io/clever-spirit-417020/service1:latest .
 docker push gcr.io/clever-spirit-417020/service1:latest
 kubectl rollout restart deploy service1
 
-# In service2 directory
+## In service2 directory
 docker build -t gcr.io/clever-spirit-417020/service2:latest .
 docker push gcr.io/clever-spirit-417020/service2:latest
 
 
-#Apply the deployments and services to your Kubernetes cluster:
+# Apply the deployments and services to your Kubernetes cluster:
 kubectl apply -f k8s-manifests/service1-deployment.yaml
 kubectl apply -f k8s-manifests/service1-service.yaml
 kubectl apply -f k8s-manifests/service2-deployment.yaml
 kubectl apply -f k8s-manifests/service2-service.yaml
 
-#Logs
+# Logs
 Logs will be written to: "projects/YOUR_PROJECT_ID/logs/winston_log"
 
 # Connect to db
@@ -30,7 +30,7 @@ kubectl rollout restart deploy service1
 # Deploy using the Helm Chart
 helm install helm-dir ./helm-dir
 
-#You can update your deployment with:
+You can update your deployment with:
 helm upgrade helm-dir ./helm-dir
 or
 helm upgrade -f panda.yaml happy-panda bitnami/wordpress
@@ -46,7 +46,7 @@ helm install traefik traefik/traefik --set service.type=LoadBalancer
 helm get values traefik -n default > values.yaml
 
 
-#Check if all pods and services are running properly:
+# Check if all pods and services are running properly:
 helm list  Lists all Helm releases and their status.
 kubectl get pods
 kubectl get svc
@@ -60,9 +60,9 @@ kubectl logs <pod_name>
 kubectl delete ingress service1-ingress service2-ingress
 
 # Option 2: Delete the Traefik Deployment
-#If you want to completely stop Traefik, you can delete its deployment.
-#First, identify the namespace where Traefik is deployed (usually traefik or kube-system).
-#Delete the Traefik deployment and any associated resources:
+If you want to completely stop Traefik, you can delete its deployment.
+First, identify the namespace where Traefik is deployed (usually traefik or kube-system).
+Delete the Traefik deployment and any associated resources:
 
 kubectl delete deployment -n <traefik-namespace> traefik
 Replace <traefik-namespace> with the namespace where Traefik is installed (e.g., traefik or kube-system).
