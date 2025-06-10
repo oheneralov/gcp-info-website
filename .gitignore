@@ -15,4 +15,22 @@ build/
 *.swp
 .env.*
 *.local
+
+# Ignore all Terraform state files
+terraform/*.tfstate
+terraform/*.tfstate.backup
+
+# Ignore crash logs and logs
+terraform/crash.log
+terraform/terraform.log
+
+# Ignore the .terraform/ directory which contains provider binaries and state cache
 terraform/.terraform/
+
+# Ignore sensitive variable files (if used)
+terraform/*.tfvars
+terraform/*.tfvars.json
+
+# Optional: lock file can be shared by teams, so decide based on team setup
+# Comment out the line below if you want to keep lock files in version control
+terraform/.terraform.lock.hcl
