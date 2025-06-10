@@ -1,0 +1,16 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: curl-job-organizations
+  namespace: default
+spec:
+  template:
+    spec:
+      containers:
+      - name: curl-container
+        image: curlimages/curl:latest
+        command:
+        - /bin/sh
+        - -c
+        - "curl -X POST -H \"Content-Type: application/json\" -d '{\"organizationId\": \"123\"}' http://service2:80"
+      restartPolicy: Never

@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: service1
 spec:
-  replicas: 2
+  replicas: {{ .Values.replicaCount | default 1 }}
   selector:
     matchLabels:
       app: service1
@@ -32,7 +32,7 @@ kind: Deployment
 metadata:
   name: service2
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: service2

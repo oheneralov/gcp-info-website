@@ -15,6 +15,12 @@ kubectl apply -f k8s-manifests/service1-service.yaml
 kubectl apply -f k8s-manifests/service2-deployment.yaml
 kubectl apply -f k8s-manifests/service2-service.yaml
 
+#Logs
+Logs will be written to: "projects/YOUR_PROJECT_ID/logs/winston_log"
+
+# Connect to db
+gcloud sql connect nextjs-app-db --user=root --quiet
+
 #Apply the ingress to the cluster:
 kubectl apply -f k8s-manifests/ingress.yaml
 
@@ -147,3 +153,29 @@ gcloud compute addresses list
 css-minify --file filename
 css-minify -d sourcedir -o distdir
 
+# jenkins GKE
+docker run --name jenkins-docker --rm  --detach   --privileged   --network jenkins --network-alias docker   --env DOCKER_TLS_CERTDIR=/certs --volume jenkins-docker-certs:/certs/client --volume jenkins-data:/var/jenkins_home --publish 2376:2376 docker:dind --storage-driver overlay2
+
+Create a Service Account
+kubectl create serviceaccount jenkins-sa
+Grant Permissions to the Service Account
+kubectl create clusterrolebinding jenkins-sa-binding --clusterrole=cluster-admin --serviceaccount=default:jenkins-sa
+Create token
+kubectl create token jenkins-sa
+Get the Service Account Token
+SECRET_NAME=$(kubectl get sa jenkins-sa -o jsonpath="{.secrets[0].name}")
+TOKEN=$(kubectl get secret $SECRET_NAME -o jsonpath="{.data.token}" | base64 --decode)
+cluster url
+kubectl config view --minify -o jsonpath="{.clusters[0].cluster.server}"
+
+Create secret 
+kubectl create secret generic jenkins-sa-secret --from-literal=token=$(openssl rand -base64 32)
+kubectl patch serviceaccount jenkins-sa -p '{"secrets": [{"name": "jenkins-sa-secret"}]}'
+
+
+## Service account 
+gcloud projects add-iam-policy-binding clever-spirit-417020 --member="serviceAccount:jenkins@clever-spirit-417020.iam.gserviceaccount.com"   --role="roles/container.viewer"
+
+gcloud projects add-iam-policy-binding clever-spirit-417020 \
+  --member="serviceAccount:jenkins@clever-spirit-417020.iam.gserviceaccount.com" \
+  --role="roles/compute.viewer"
