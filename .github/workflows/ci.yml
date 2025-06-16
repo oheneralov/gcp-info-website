@@ -29,6 +29,10 @@ jobs:
         working-directory: service1
         run: npm test
 
+      - name: Security check with npm audit
+        working-directory: service1
+        run: npm audit --audit-level=moderate
+
 
   terraform-security:
     runs-on: ubuntu-latest
