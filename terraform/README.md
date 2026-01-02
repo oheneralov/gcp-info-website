@@ -45,6 +45,8 @@ terraform/
 - GKE cluster already created
 - Service account credentials JSON file
 - kubectl configured for the GKE cluster
+- Helm >= 3.0 installed
+- gcloud CLI installed and configured
 
 ### 1. Initialize Terraform
 
@@ -87,6 +89,496 @@ helm list -n <namespace>
 
 # Check pods
 kubectl get pods -n <namespace>
+```
+
+## 🔧 Terraform Setup Guide
+
+### Prerequisites Installation
+
+#### Install Terraform
+```bash
+# macOS (using Homebrew)
+brew tap hashicorp/tap
+brew install hashicorp/tap/terraform
+
+# Windows (using Chocolatey)
+choco install terraform
+
+# Linux
+wget https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip
+unzip terraform_1.5.0_linux_amd64.zip
+sudo mv terraform /usr/local/bin/
+```
+
+#### Install Required Tools
+```bash
+# Install kubectl
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+
+# Install Helm
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+# Install gcloud CLI
+curl https://sdk.cloud.google.com | bash
+exec -l $SHELL
+```
+
+### GCP Setup
+
+#### 1. Create GCP Service Account
+```bash
+# Set project ID
+export PROJECT_ID="your-gcp-project-id"
+gcloud config set project $PROJECT_ID
+
+# Create service account
+gcloud iam service-accounts create terraform-sa \
+  --display-name="Terraform Service Account"
+
+# Grant necessary roles
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:terraform-sa@$PROJECT_ID.iam.gserviceaccount.com \
+  --role=roles/container.admin
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:terraform-sa@$PROJECT_ID.iam.gserviceaccount.com \
+  --role=roles/compute.admin
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:terraform-sa@$PROJECT_ID.iam.gserviceaccount.com \
+  --role=roles/iam.serviceAccountUser
+```
+
+#### 2. Generate and Store Credentials
+```bash
+# Create key file
+gcloud iam service-accounts keys create terraform-key.json \
+  --iam-account=terraform-sa@$PROJECT_ID.iam.gserviceaccount.com
+
+# Set environment variable
+export GOOGLE_APPLICATION_CREDENTIALS="$(pwd)/terraform-key.json"
+
+# Store securely (never commit to version control)
+echo "terraform-key.json" >> .gitignore
+```
+
+#### 3. Configure GCP Access
+```bash
+# Authenticate gcloud
+gcloud auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
+gcloud config set project $PROJECT_ID
+
+# Verify access
+gcloud container clusters list
+```
+
+### Initial Setup Steps
+
+#### 1. Clone Repository and Navigate
+```bash
+git clone <repository-url>
+cd gcp-info-website/terraform
+```
+
+#### 2. Setup Environment Variables
+Create a local environment configuration file:
+```bash
+# Create .env file (not committed to git)
+cat > .env << EOF
+export TF_VAR_project_id="your-project-id"
+export TF_VAR_region="us-central1"
+export TF_VAR_credentials_file="$(pwd)/terraform-key.json"
+export TF_VAR_cluster_name="gcp-info-website-dev"
+export TF_VAR_environment="dev"
+export GOOGLE_APPLICATION_CREDENTIALS="$(pwd)/terraform-key.json"
+EOF
+
+# Source the environment
+source .env
+```
+
+#### 3. Update Environment Variables
+```bash
+# Edit environment-specific tfvars files
+# Development
+vi environments/dev.tfvars
+
+# Staging
+vi environments/staging.tfvars
+
+# Production
+vi environments/production.tfvars
+```
+
+#### 4. Initialize Terraform Backend
+```bash
+# Initialize with local state (for testing)
+terraform init
+
+# Or with remote GCS backend (for production)
+# First create GCS bucket
+gsutil mb gs://$PROJECT_ID-terraform-state
+
+# Then update backend configuration in terraform.tf and init
+terraform init -backend-config="bucket=$PROJECT_ID-terraform-state"
+```
+
+#### 5. Validate Configuration
+```bash
+terraform validate
+terraform fmt -recursive
+tflint
+```
+
+#### 6. Plan and Apply
+```bash
+# Development
+terraform plan -var-file="environments/dev.tfvars" -out=tfplan
+terraform apply tfplan
+
+# Check deployment
+terraform output
+kubectl get pods -n development
+```
+
+### Post-Setup Verification
+
+```bash
+# Verify Helm release
+helm list -n development
+
+# Check service endpoints
+kubectl get svc -n development
+
+# View deployment logs
+kubectl logs -n development -l app=mainwebsite
+
+# Test connectivity
+kubectl port-forward -n development svc/mainwebsite 8080:3000
+curl http://localhost:8080
+```
+
+## 🤖 Jenkins Integration Setup
+
+### Jenkins Prerequisites
+
+#### Required Jenkins Plugins
+Install these plugins in Jenkins:
+- Pipeline (Declarative Pipeline)
+- GitHub or GitLab (depending on your VCS)
+- Google Kubernetes Engine (GKE)
+- Docker Pipeline
+- Terraform Plugin (or similar)
+- Credentials Binding Plugin
+- Google Cloud Storage Plugin
+- Slack Notification Plugin (optional)
+
+#### Jenkins System Configuration
+
+1. **Manage Jenkins → Manage Credentials**
+   - Add GCP Service Account JSON credentials
+   - Credential ID: `gcp-service-account`
+   - Select JSON file from `terraform-key.json`
+
+2. **Manage Jenkins → Configure System**
+   - Google Kubernetes Engine
+   - Configure GCP project and credentials
+   - Configure Kubernetes clusters
+
+3. **Manage Jenkins → Configure Global Security**
+   - Enable CSRF protection
+   - Configure authentication method (LDAP, GitHub OAuth, etc.)
+
+### Jenkins Pipeline Configuration
+
+#### 1. Create Build Pipeline Job
+
+Create a Jenkins pipeline job that uses `Jenkinsfile.build`:
+
+```groovy
+// Example pipeline configuration
+pipeline {
+    agent any
+    
+    triggers {
+        githubPush()  // Trigger on GitHub push
+    }
+    
+    environment {
+        GCP_PROJECT_ID = credentials('gcp-project-id')
+        GCP_REGION = 'us-central1'
+        GOOGLE_APPLICATION_CREDENTIALS = credentials('gcp-service-account')
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Validate Terraform') {
+            steps {
+                dir('terraform') {
+                    sh '''
+                        terraform init
+                        terraform validate
+                        terraform fmt -check -recursive
+                    '''
+                }
+            }
+        }
+        
+        // ... additional stages
+    }
+}
+```
+
+#### 2. Create Deploy Pipeline Job
+
+Create a Jenkins pipeline job that uses `Jenkinsfile.deploy`:
+
+**Job Configuration:**
+- Select: Pipeline job
+- Pipeline: Pipeline script from SCM
+- SCM: Git
+- Repository URL: Your Git repository
+- Script Path: `Jenkinsfile.deploy`
+- Parameters:
+  - `DEPLOYMENT_ENV`: staging or production
+  - `IMAGE_TAG`: Docker image tag
+
+#### 3. Configure Credentials in Jenkins
+
+Navigate to **Manage Jenkins → Manage Credentials → System → Global credentials**
+
+Add the following credentials:
+
+1. **GCP Project ID**
+   - Type: Secret text
+   - ID: `gcp-project-id`
+   - Secret: Your GCP project ID
+
+2. **GKE Cluster Name**
+   - Type: Secret text
+   - ID: `gke-cluster-name`
+   - Secret: Your GKE cluster name
+
+3. **GKE Zone**
+   - Type: Secret text
+   - ID: `gke-zone`
+   - Secret: Your GKE zone (e.g., `us-central1-a`)
+
+4. **GCP Docker Registry URL**
+   - Type: Secret text
+   - ID: `gcp-docker-registry-url`
+   - Secret: `gcr.io`
+
+5. **GCP Service Account JSON**
+   - Type: Secret file
+   - ID: `gcp-service-account`
+   - File: Upload `terraform-key.json`
+
+### Jenkins Job Setup Steps
+
+#### 1. Build Pipeline Job
+
+```bash
+# Job name: gcp-info-website-build
+# Type: Pipeline
+# Trigger: GitHub Push (webhook)
+
+# Pipeline configuration:
+# - Pipeline script from SCM
+# - Git repository: <your-repo-url>
+# - Script path: Jenkinsfile.build
+```
+
+**Build Job Stages:**
+- Checkout
+- Setup GCP Authentication
+- Install Dependencies
+- Lint Code
+- Build Docker Images
+- Push Images to GCR
+- Run Tests
+- Generate Reports
+
+#### 2. Deploy Pipeline Job
+
+```bash
+# Job name: gcp-info-website-deploy
+# Type: Parameterized Pipeline
+# Trigger: Manual or after build success
+
+# Parameters:
+# - DEPLOYMENT_ENV (choice: staging, production)
+# - IMAGE_TAG (string: default latest)
+```
+
+**Deploy Job Stages:**
+- Checkout
+- Setup GCP Authentication
+- Verify Docker Images
+- Configure kubectl
+- Update Helm Values
+- Deploy with Helm
+- Verify Deployment
+- Run Smoke Tests
+- Notify Slack
+
+#### 3. Validate Terraform Pipeline Job
+
+```bash
+# Job name: gcp-info-website-validate-terraform
+# Type: Pipeline
+# Trigger: Pull Request
+
+# Pipeline stages:
+# - Terraform Init
+# - Terraform Validate
+# - Terraform Format Check
+# - TFLint
+# - Security Scan (Optional)
+```
+
+### GitHub Webhook Setup (for automated builds)
+
+1. Go to your GitHub repository
+2. Settings → Webhooks → Add webhook
+3. Payload URL: `http://<jenkins-url>/github-webhook/`
+4. Content type: `application/json`
+5. Events: Select "Push events"
+6. Active: ✓ Check
+
+### Jenkins Environment Configuration
+
+#### Set Up Jenkins Build Node
+
+```bash
+# On Jenkins agent/node
+# Install required tools
+sudo apt-get update
+sudo apt-get install -y \
+    docker.io \
+    terraform \
+    kubectl \
+    helm \
+    git \
+    npm \
+    python3 \
+    jq
+
+# Configure Docker
+sudo usermod -aG docker jenkins
+
+# Setup gcloud
+curl https://sdk.cloud.google.com | bash
+```
+
+#### Configure Jenkins Node Credentials
+
+1. **Manage Jenkins → Manage Nodes**
+2. **Agent node → Configure**
+3. Add environment variables:
+   ```
+   DOCKER_HOST=unix:///var/run/docker.sock
+   GCP_REGION=us-central1
+   KUBECONFIG=/var/lib/jenkins/.kube/config
+   ```
+
+### Monitoring and Notifications
+
+#### Slack Notifications
+
+1. Install Slack plugin
+2. **Manage Jenkins → Configure System → Slack**
+3. Add Slack workspace URL and token
+4. In pipeline, add notification stage:
+
+```groovy
+post {
+    success {
+        slackSend(
+            color: 'good',
+            message: "Deployment Success: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+        )
+    }
+    failure {
+        slackSend(
+            color: 'danger',
+            message: "Deployment Failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+        )
+    }
+}
+```
+
+#### Email Notifications
+
+1. **Manage Jenkins → Configure System → E-mail Notification**
+2. Configure SMTP server details
+3. In pipeline:
+
+```groovy
+post {
+    always {
+        emailext(
+            to: 'team@example.com',
+            subject: "Build ${env.BUILD_NUMBER}: ${currentBuild.result}",
+            body: "Check console output at ${env.BUILD_URL}"
+        )
+    }
+}
+```
+
+### CI/CD Workflow
+
+```
+GitHub Push
+    ↓
+Jenkins Build Trigger (Jenkinsfile.build)
+    ├─ Checkout code
+    ├─ Run tests
+    ├─ Build Docker images
+    └─ Push to GCR
+    ↓
+Manual Deployment Trigger (Jenkinsfile.deploy)
+    ├─ Staging environment
+    ├─ Run smoke tests
+    ├─ Approve for production
+    └─ Deploy to production
+    ↓
+Verify Deployment
+    ├─ Health checks
+    ├─ Helm verification
+    └─ Slack notification
+```
+
+### Troubleshooting Jenkins Integration
+
+**Issue**: Permission Denied when pulling images
+```groovy
+// Solution: Configure Docker authentication in Jenkins
+withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GOOGLE_APPLICATION_CREDENTIALS')]) {
+    sh 'gcloud auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS'
+    sh 'gcloud auth configure-docker gcr.io'
+}
+```
+
+**Issue**: Terraform state lock conflicts
+```bash
+# Solution: Clear stuck locks
+terraform force-unlock <LOCK_ID>
+
+# Or use backend configuration for state locking
+terraform init -backend-config="skip_bucket_creation=true"
+```
+
+**Issue**: GKE authentication failures
+```bash
+# Solution: Update kubeconfig
+gcloud container clusters get-credentials <cluster-name> --zone <zone> --project <project-id>
 ```
 
 ## 📝 Configuration Files
