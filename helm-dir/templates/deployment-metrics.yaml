@@ -1,20 +1,20 @@
-{{- if .Values.mainwebsite.enabled }}
+{{- if .Values.metrics.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "helm-dir.fullname" . }}-mainwebsite
+  name: {{ include "helm-dir.fullname" . }}-metrics
   namespace: {{ .Values.global.namespace | default .Release.Namespace }}
   labels:
     {{- include "helm-dir.labels" . | nindent 4 }}
-    app.kubernetes.io/component: mainwebsite
+    app.kubernetes.io/component: metrics
 spec:
-  {{- if not .Values.mainwebsite.autoscaling.enabled }}
-  replicas: {{ .Values.mainwebsite.replicaCount | default 1 }}
+  {{- if not .Values.metrics.autoscaling.enabled }}
+  replicas: {{ .Values.metrics.replicaCount | default 1 }}
   {{- end }}
   selector:
     matchLabels:
       {{- include "helm-dir.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: mainwebsite
+      app.kubernetes.io/component: metrics
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -23,7 +23,7 @@ spec:
       {{- end }}
       labels:
         {{- include "helm-dir.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: mainwebsite
+        app.kubernetes.io/component: metrics
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -36,45 +36,41 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-      - name: mainwebsite
-        image: "{{ .Values.mainwebsite.image.repository }}:{{ .Values.mainwebsite.image.tag | default .Chart.AppVersion }}"
-        imagePullPolicy: {{ .Values.mainwebsite.image.pullPolicy }}
+      - name: metrics
+        image: "{{ .Values.metrics.image.repository }}:{{ .Values.metrics.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.metrics.image.pullPolicy }}
         securityContext:
           {{- toYaml .Values.securityContext | nindent 12 }}
         ports:
-        - containerPort: {{ .Values.mainwebsite.service.targetPort }}
+        - containerPort: {{ .Values.metrics.service.targetPort }}
           name: http
           protocol: TCP
-        - containerPort: 9090
+        - containerPort: 3001
           name: metrics
           protocol: TCP
-        {{- if .Values.mainwebsite.env }}
-        env:
-          {{- toYaml .Values.mainwebsite.env | nindent 12 }}
-        {{- end }}
-        {{- with .Values.mainwebsite.probes.liveness }}
+        {{- with .Values.metrics.probes.liveness }}
         livenessProbe:
           {{- toYaml . | nindent 12 }}
         {{- end }}
-        {{- with .Values.mainwebsite.probes.readiness }}
+        {{- with .Values.metrics.probes.readiness }}
         readinessProbe:
           {{- toYaml . | nindent 12 }}
         {{- end }}
         resources:
-          {{- toYaml .Values.mainwebsite.resources | nindent 12 }}
+          {{- toYaml .Values.metrics.resources | nindent 12 }}
         {{- with .Values.volumeMounts }}
         volumeMounts:
           {{- toYaml . | nindent 12 }}
         {{- end }}
-      {{- with .Values.mainwebsite.nodeSelector }}
+      {{- with .Values.metrics.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.mainwebsite.affinity }}
+      {{- with .Values.metrics.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.mainwebsite.tolerations }}
+      {{- with .Values.metrics.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}

@@ -1,0 +1,17 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "helm-dir.fullname" . }}
+  labels:
+    {{- include "helm-dir.labels" . | nindent 4 }}
+rules:
+# Add appropriate permissions as needed for your applications
+# Example: reading ConfigMaps, accessing Secrets, etc.
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+{{- end }}

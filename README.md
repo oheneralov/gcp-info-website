@@ -1,184 +1,352 @@
-# Build and push images to Docker Hub
-## In service1 directory
-docker build -t gcr.io/clever-spirit-417020/service1:latest .
-docker push gcr.io/clever-spirit-417020/service1:latest
-kubectl rollout restart deploy service1
+# GCP Info Website
 
-## In service2 directory
-docker build -t gcr.io/clever-spirit-417020/service2:latest .
-docker push gcr.io/clever-spirit-417020/service2:latest
+A cloud-native application deployment using Kubernetes, Helm, Traefik, and GCP services.
 
+## 📋 Table of Contents
 
-# Apply the deployments and services to your Kubernetes cluster:
-kubectl apply -f k8s-manifests/service1-deployment.yaml
-kubectl apply -f k8s-manifests/service1-service.yaml
-kubectl apply -f k8s-manifests/service2-deployment.yaml
-kubectl apply -f k8s-manifests/service2-service.yaml
+- [Docker & Container Management](#docker--container-management)
+- [Kubernetes Deployment](#kubernetes-deployment)
+- [Helm Chart Management](#helm-chart-management)
+- [Traefik Ingress Controller](#traefik-ingress-controller)
+- [Deployment Rollback](#deployment-rollback)
+- [Monitoring & Debugging](#monitoring--debugging)
+- [GCP Configuration](#gcp-configuration)
+- [Database Access](#database-access)
+- [Jenkins Integration](#jenkins-integration)
+- [Utilities](#utilities)
 
-# Logs
-Logs will be written to: "projects/YOUR_PROJECT_ID/logs/winston_log"
+---
 
-# Connect to db
-gcloud sql connect nextjs-app-db --user=root --quiet
+## 🐳 Docker & Container Management
 
-#Apply the ingress to the cluster:
+### Build and Push Service Images
+
+**Main Website:**
+```bash
+cd mainwebsite
+docker build -t gcr.io/clever-spirit-417020/mainwebsite:latest .
+docker push gcr.io/clever-spirit-417020/mainwebsite:latest
+kubectl rollout restart deploy mainwebsite
+```
+
+**Metrics Service:**
+```bash
+cd metrics
+docker build -t gcr.io/clever-spirit-417020/metrics:latest .
+docker push gcr.io/clever-spirit-417020/metrics:latest
+```
+
+---
+
+## ☸️ Kubernetes Deployment
+
+### Deploy Services and Ingress
+
+```bash
+# Deploy Main Website
+kubectl apply -f k8s-manifests/mainwebsite-deployment.yaml
+kubectl apply -f k8s-manifests/mainwebsite-service.yaml
+
+# Deploy Metrics Service
+kubectl apply -f k8s-manifests/metrics-deployment.yaml
+kubectl apply -f k8s-manifests/metrics-service.yaml
+
+# Deploy Ingress
 kubectl apply -f k8s-manifests/ingress.yaml
+```
 
-# rollout
-kubectl rollout restart deploy service1
+### Check Cluster Status
 
-# Deploy using the Helm Chart
+```bash
+kubectl get pods              # View all pods
+kubectl get svc              # View all services
+kubectl get ingress          # View ingress rules
+```
+
+### View Pod Details
+
+```bash
+kubectl exec -it <pod_name> -- printenv    # View environment variables
+kubectl logs <pod_name>                    # View pod logs
+```
+
+---
+
+## 📦 Helm Chart Management
+
+### Install Helm Chart
+
+```bash
 helm install helm-dir ./helm-dir
+```
 
-You can update your deployment with:
+### Upgrade Deployment
+
+```bash
 helm upgrade helm-dir ./helm-dir
-or
-helm upgrade -f panda.yaml happy-panda bitnami/wordpress
+```
 
-# Traefik
-### Upgrade traefik
-helm upgrade traefik traefik/traefik -f treafik.yaml
-### View traefik configuration
-kubectl describe service traefik -n default
-# Install Traefik:
+### List Helm Releases
+
+```bash
+helm list
+```
+
+### Delete Deployment
+
+```bash
+helm uninstall helm-dir
+```
+
+---
+
+## 🔄 Traefik Ingress Controller
+
+### Install Traefik
+
+```bash
 helm install traefik traefik/traefik --set service.type=LoadBalancer
-# If you need to get the current values from your deployment, run:
+```
+
+### Upgrade Traefik
+
+```bash
+helm upgrade traefik traefik/traefik -f treafik.yaml
+```
+
+### View Traefik Configuration
+
+```bash
+kubectl describe service traefik -n default
 helm get values traefik -n default > values.yaml
+```
 
+### Manage Traefik Deployment
 
-# Check if all pods and services are running properly:
-helm list  Lists all Helm releases and their status.
-kubectl get pods
-kubectl get svc
-kubectl get ingress
-kubectl exec -it <pod_name> -- printenv
-kubectl logs <pod_name>
-
-# Delete the Ingress Resource
-# Option 1: Delete the Ingress Resource
-# This will stop Traefik from routing traffic to your services based on the specified ingress rules. However, Traefik will still be running in your cluster, which may be useful if you plan to reconfigure or redeploy it.
-kubectl delete ingress service1-ingress service2-ingress
-
-# Option 2: Delete the Traefik Deployment
-If you want to completely stop Traefik, you can delete its deployment.
-First, identify the namespace where Traefik is deployed (usually traefik or kube-system).
-Delete the Traefik deployment and any associated resources:
-
-kubectl delete deployment -n <traefik-namespace> traefik
-Replace <traefik-namespace> with the namespace where Traefik is installed (e.g., traefik or kube-system).
-
-#Option 3: Scale Down the Traefik Deployment
-#Scaling down Traefik to zero replicas is a quick way to stop it temporarily without deleting the deployment.
-
+**Stop temporarily (scale down):**
+```bash
 kubectl scale deployment -n <traefik-namespace> traefik --replicas=0
+```
 
-#To restart Traefik, simply scale it back up:
+**Restart:**
+```bash
 kubectl scale deployment -n <traefik-namespace> traefik --replicas=1
+```
 
-#Option 4: Remove Traefik Ingress Controller Completely
-#If you want to completely remove Traefik from your cluster, you can delete all Traefik-related resources (e.g., deployment, service, and config maps). Make sure to check Traefik’s documentation for any additional resources that might need to be removed.
+**Remove completely:**
+```bash
 kubectl delete all -n <traefik-namespace> -l app=traefik
+```
 
+### Delete Ingress Rules
 
-## To roll back a deployment in Kubernetes to a previous version, you can use the following command:
-kubectl rollout undo deployment/service1
+```bash
+kubectl delete ingress mainwebsite-ingress metrics-ingress
+```
 
-##Rollback to a Specific Revision: If you want to roll back to a specific revision, you can first list the revision history to identify which one you want to roll back to:
-kubectl rollout history deployment/service1
+### IngressRoute Management
 
-## This will show you a list of revisions. Then, you can roll back to a specific revision using:
-kubectl rollout undo deployment/service1 --to-revision=<revision_number>
-Replace <revision_number> with the desired revision number from the history.
-
-## Check the Status of the Rollback
-To ensure the rollback was successful, check the status of the deployment:
-kubectl rollout status deployment/service1
-View the Current State
-You can also view the current state of your deployment to verify the rollback:
-kubectl get deployment service1
-
-#Notes for Helm Upgrade and Deletion
-#Update/Upgrade Your Deployment If you make changes to your Helm chart (e.g., update the values.yaml or other configuration files), you can upgrade your deployment using:
-helm upgrade my-express-app ./my-express-app
-
-#Delete the Deployment If you want to remove your deployment, use:
-helm uninstall my-express-app
-
-#Troubleshooting
-#Pod Errors: Check the logs of your pods if they’re not running correctly:
-kubectl logs <pod-name>
-
-#Ingress Issues: Ensure Traefik is configured correctly and the ingress rules are working as expected.
-#Helm Errors: Use helm status my-express-app to get more details about your deployment.
-
-#How to Check IngressRoute Resources
-#To list and get details about Traefik's IngressRoute resources, use the following commands:
-
-#List All IngressRoutes
-
+**List IngressRoutes:**
+```bash
 kubectl get ingressroute
-#This will show you all the IngressRoute resources that have been deployed in your Kubernetes cluster.
+```
 
-#Get Details of a Specific IngressRoute
+**Get IngressRoute details:**
+```bash
 kubectl describe ingressroute <name-of-your-ingressroute>
-#Replace <name-of-your-ingressroute> with the name of your IngressRoute object to get more details, including any potential issues.
+```
 
-#Steps to Troubleshoot
-#Check if Traefik is Running Ensure that the Traefik ingress controller is up and running:
+---
 
+## 🔙 Deployment Rollback
+
+### Rollback to Previous Version
+
+```bash
+kubectl rollout undo deployment/mainwebsite
+```
+
+### View Rollout History
+
+```bash
+kubectl rollout history deployment/mainwebsite
+```
+
+### Rollback to Specific Revision
+
+```bash
+kubectl rollout undo deployment/mainwebsite --to-revision=<revision_number>
+```
+
+### Check Rollback Status
+
+```bash
+kubectl rollout status deployment/mainwebsite
+kubectl get deployment mainwebsite
+```
+
+---
+
+## 🔍 Monitoring & Debugging
+
+### View Pod Logs
+
+```bash
+kubectl logs <pod-name>
+```
+
+### Verify Traefik is Running
+
+```bash
 kubectl get pods -n traefik
+```
 
-#If Traefik is not running, check your Traefik deployment configuration and ensure it’s correctly installed and deployed.
-#Verify Traefik Custom Resource Definitions (CRDs) Check if the necessary CRDs for Traefik (IngressRoute, Middleware, etc.) are installed:
+### Check Traefik Custom Resource Definitions
 
+```bash
 kubectl get crd
-You should see resources like ingressroutes.traefik.io, middlewares.traefik.io, and other Traefik-related CRDs.
+```
 
-Review Your IngressRoute Configuration
+Expected CRDs: `ingressroutes.traefik.io`, `middlewares.traefik.io`, etc.
 
-Open the k8s-manifests/ingress.yaml file and double-check that the configuration matches your requirements.
-Ensure that the IngressRoute is correctly pointing to your services and using the right entry points (e.g., web for HTTP or websecure for HTTPS).
+### Check Traefik Controller Logs
 
-#Check Logs for Errors Check the logs of the Traefik ingress controller for any errors or warnings:
+```bash
 kubectl logs -n traefik <traefik-pod-name>
-Replace <traefik-pod-name> with the name of your Traefik pod.
+```
 
+### Verify IngressRoute Configuration
 
-### Create a static address
+Open `k8s-manifests/ingress.yaml` and ensure:
+- IngressRoute points to correct services
+- Entry points are configured (web for HTTP, websecure for HTTPS)
+
+---
+
+## ☁️ GCP Configuration
+
+### Create Static IP Address
+
+```bash
 gcloud compute addresses create websitestatic2 --region=europe-west1
-### Get addresses
+```
+
+### List Static Addresses
+
+```bash
 gcloud compute addresses list
+```
 
-# Minify CSS
-css-minify --file filename
-css-minify -d sourcedir -o distdir
+### Connect to Cloud SQL
 
-# jenkins GKE
-docker run --name jenkins-docker --rm  --detach   --privileged   --network jenkins --network-alias docker   --env DOCKER_TLS_CERTDIR=/certs --volume jenkins-docker-certs:/certs/client --volume jenkins-data:/var/jenkins_home --publish 2376:2376 docker:dind --storage-driver overlay2
+```bash
+gcloud sql connect nextjs-app-db --user=root --quiet
+```
 
-Create a Service Account
-kubectl create serviceaccount jenkins-sa
-Grant Permissions to the Service Account
-kubectl create clusterrolebinding jenkins-sa-binding --clusterrole=cluster-admin --serviceaccount=default:jenkins-sa
-Create token
-kubectl create token jenkins-sa
-Get the Service Account Token
-SECRET_NAME=$(kubectl get sa jenkins-sa -o jsonpath="{.secrets[0].name}")
-TOKEN=$(kubectl get secret $SECRET_NAME -o jsonpath="{.data.token}" | base64 --decode)
-cluster url
-kubectl config view --minify -o jsonpath="{.clusters[0].cluster.server}"
+### Service Account Permissions
 
-Create secret 
-kubectl create secret generic jenkins-sa-secret --from-literal=token=$(openssl rand -base64 32)
-kubectl patch serviceaccount jenkins-sa -p '{"secrets": [{"name": "jenkins-sa-secret"}]}'
-
-
-## Service account 
-gcloud projects add-iam-policy-binding clever-spirit-417020 --member="serviceAccount:jenkins@clever-spirit-417020.iam.gserviceaccount.com"   --role="roles/container.viewer"
+```bash
+gcloud projects add-iam-policy-binding clever-spirit-417020 \
+  --member="serviceAccount:jenkins@clever-spirit-417020.iam.gserviceaccount.com" \
+  --role="roles/container.viewer"
 
 gcloud projects add-iam-policy-binding clever-spirit-417020 \
   --member="serviceAccount:jenkins@clever-spirit-417020.iam.gserviceaccount.com" \
   --role="roles/compute.viewer"
+```
 
-## Remove extra files from repo
-git filter-branch --force --index-filter 'git rm -r --cached --ignore-unmatch terraform/.terraform' --prune-empty --tag-name-filter cat -- --all
+---
+
+## 💾 Database Access
+
+### Cloud SQL Connection
+
+```bash
+gcloud sql connect nextjs-app-db --user=root --quiet
+```
+
+### Application Logs
+
+Logs are written to: `projects/YOUR_PROJECT_ID/logs/winston_log`
+
+---
+
+## 🔧 Jenkins Integration
+
+### Create Jenkins Service Account
+
+```bash
+kubectl create serviceaccount jenkins-sa
+```
+
+### Grant Permissions
+
+```bash
+kubectl create clusterrolebinding jenkins-sa-binding \
+  --clusterrole=cluster-admin \
+  --serviceaccount=default:jenkins-sa
+```
+
+### Get Service Account Token
+
+```bash
+kubectl create token jenkins-sa
+```
+
+**Or retrieve existing token:**
+```bash
+SECRET_NAME=$(kubectl get sa jenkins-sa -o jsonpath="{.secrets[0].name}")
+TOKEN=$(kubectl get secret $SECRET_NAME -o jsonpath="{.data.token}" | base64 --decode)
+```
+
+### Get Cluster URL
+
+```bash
+kubectl config view --minify -o jsonpath="{.clusters[0].cluster.server}"
+```
+
+### Create Jenkins Secret
+
+```bash
+kubectl create secret generic jenkins-sa-secret --from-literal=token=$(openssl rand -base64 32)
+kubectl patch serviceaccount jenkins-sa -p '{"secrets": [{"name": "jenkins-sa-secret"}]}'
+```
+
+### Run Jenkins Docker Container
+
+```bash
+docker run --name jenkins-docker --rm --detach --privileged \
+  --network jenkins --network-alias docker \
+  --env DOCKER_TLS_CERTDIR=/certs \
+  --volume jenkins-docker-certs:/certs/client \
+  --volume jenkins-data:/var/jenkins_home \
+  --publish 2376:2376 docker:dind --storage-driver overlay2
+```
+
+---
+
+## 🛠️ Utilities
+
+### Minify CSS
+
+```bash
+css-minify --file filename
+css-minify -d sourcedir -o distdir
+```
+
+### Remove Large Files from Git History
+
+```bash
+git filter-branch --force --index-filter 'git rm -r --cached --ignore-unmatch terraform/.terraform' \
+  --prune-empty --tag-name-filter cat -- --all
+```
+
+---
+
+## 📝 Notes
+
+- Replace `<pod_name>` with your actual pod name
+- Replace `<traefik-namespace>` with your Traefik namespace (usually `traefik` or `kube-system`)
+- Replace `<revision_number>` with the desired revision from history
+- Update `YOUR_PROJECT_ID` with your actual GCP project ID
+

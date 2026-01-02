@@ -1,37 +1,61 @@
+{{- if .Values.mainwebsite.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
-  # Name of the first service
-  name: {{ .Chart.Name }}
+  name: {{ include "helm-dir.fullname" . }}-mainwebsite
+  namespace: {{ .Values.global.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "helm-dir.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mainwebsite
+  {{- with .Values.global.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
-  # Type of the service
-  type: ClusterIP
+  type: {{ .Values.mainwebsite.service.type }}
   selector:
-    # Selector to match the pods
-    app: service1
+    {{- include "helm-dir.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: mainwebsite
   ports:
-  - protocol: TCP
-    # Port exposed by the service
-    port: 80
-    # Port on the container
-    targetPort: 3000
+  - name: http
+    protocol: TCP
+    port: {{ .Values.mainwebsite.service.port }}
+    targetPort: http
+  - name: metrics
+    protocol: TCP
+    port: 9090
+    targetPort: metrics
+{{- end }}
 
 ---
+
+{{- if .Values.metrics.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
-  # Name of the second service
-  name: service2
+  name: {{ include "helm-dir.fullname" . }}-metrics
+  namespace: {{ .Values.global.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "helm-dir.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+  {{- with .Values.global.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
-  # Type of the service
-  type: ClusterIP
+  type: {{ .Values.metrics.service.type }}
   selector:
-    # Selector to match the pods
-    app: service2
+    {{- include "helm-dir.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
   ports:
-  - protocol: TCP
-    # Port exposed by the service
-    port: 80
-    # Port on the container
-    targetPort: 3001
+  - name: http
+    protocol: TCP
+    port: {{ .Values.metrics.service.port }}
+    targetPort: http
+  - name: metrics
+    protocol: TCP
+    port: 3001
+    targetPort: metrics
+{{- end }}
+
 

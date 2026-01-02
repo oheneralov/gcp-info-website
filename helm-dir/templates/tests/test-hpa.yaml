@@ -1,0 +1,50 @@
+{{- if or .Values.mainwebsite.autoscaling.enabled .Values.metrics.autoscaling.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "helm-dir.fullname" . }}-test-hpa"
+  namespace: {{ .Values.global.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "helm-dir.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  serviceAccountName: default
+  containers:
+    - name: kubectl
+      image: bitnami/kubectl:latest
+      command:
+        - sh
+        - -c
+        - |
+          echo "Verifying HorizontalPodAutoscaler resources..."
+          
+          {{- if .Values.mainwebsite.autoscaling.enabled }}
+          echo "Checking mainwebsite HPA..."
+          kubectl get hpa {{ include "helm-dir.fullname" . }}-mainwebsite -n {{ .Values.global.namespace | default .Release.Namespace }}
+          if [ $? -eq 0 ]; then
+            echo "✓ Mainwebsite HPA found"
+            kubectl get hpa {{ include "helm-dir.fullname" . }}-mainwebsite -n {{ .Values.global.namespace | default .Release.Namespace }} -o jsonpath='{.status}'
+          else
+            echo "✗ Mainwebsite HPA not found"
+            exit 1
+          fi
+          {{- end }}
+          
+          {{- if .Values.metrics.autoscaling.enabled }}
+          echo "Checking metrics HPA..."
+          kubectl get hpa {{ include "helm-dir.fullname" . }}-metrics -n {{ .Values.global.namespace | default .Release.Namespace }}
+          if [ $? -eq 0 ]; then
+            echo "✓ Metrics HPA found"
+            kubectl get hpa {{ include "helm-dir.fullname" . }}-metrics -n {{ .Values.global.namespace | default .Release.Namespace }} -o jsonpath='{.status}'
+          else
+            echo "✗ Metrics HPA not found"
+            exit 1
+          fi
+          {{- end }}
+          
+          echo "✓ All HPA resources verified"
+          exit 0
+  restartPolicy: Never
+{{- end }}

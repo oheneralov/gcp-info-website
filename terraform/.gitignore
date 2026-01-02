@@ -1,0 +1,42 @@
+# Terraform - Local State and Credentials
+terraform.tfvars
+terraform.tfstate
+terraform.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary files
+*.tmp
+*.log
+
+# Service account credentials (SECURITY)
+*.json
+!example-credentials.json
+
+# Environment files with sensitive data
+*.auto.tfvars
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Exclude override files as they are often used to override resources locally
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# macOS
+.DS_Store
+
+# Backup files
+*.backup
+*.bak

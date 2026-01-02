@@ -1,0 +1,205 @@
+pipeline {
+    agent any
+
+    environment {
+        GCP_PROJECT_ID = credentials('gcp-project-id')
+        GCP_REGION = 'us-central1'
+        GKE_CLUSTER_NAME = credentials('gke-cluster-name')
+        GKE_ZONE = credentials('gke-zone')
+        DOCKER_REGISTRY = 'gcr.io'
+        MAINWEBSITE_IMAGE_NAME = "${DOCKER_REGISTRY}/${GCP_PROJECT_ID}/mainwebsite"
+        METRICS_IMAGE_NAME = "${DOCKER_REGISTRY}/${GCP_PROJECT_ID}/metrics"
+        IMAGE_TAG = "${BUILD_NUMBER}-${GIT_COMMIT.take(8)}"
+        REGISTRY_URL = credentials('gcp-docker-registry-url')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Setup GCP Authentication') {
+            steps {
+                script {
+                    sh '''
+                        gcloud auth activate-service-account --key-file=${GOOGLE_APPLICATION_CREDENTIALS}
+                        gcloud config set project ${GCP_PROJECT_ID}
+                        gcloud auth configure-docker ${DOCKER_REGISTRY}
+                    '''
+                }
+            }
+        }
+
+        stage('Install Dependencies - Main Website') {
+            steps {
+                dir('mainwebsite') {
+                    sh 'npm install'
+                }
+            }
+        }
+
+        stage('Lint Main Website') {
+            steps {
+                dir('mainwebsite') {
+                    sh 'npm run lint || true'
+                }
+            }
+        }
+
+        stage('Format Check Main Website') {
+            steps {
+                dir('mainwebsite') {
+                    sh 'npm run format:check || true'
+                }
+            }
+        }
+
+        stage('SonarQube Code Quality Scan') {
+            steps {
+                dir('mainwebsite') {
+                    script {
+                        sh '''
+                            sonar-scanner \
+                                -Dsonar.projectKey=${GCP_PROJECT_ID}-mainwebsite \
+                                -Dsonar.sources=./src \
+                                -Dsonar.host.url=${SONARQUBE_HOST_URL} \
+                                -Dsonar.login=${SONARQUBE_TOKEN} \
+                                -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info \
+                                -Dsonar.typescript.tsconfigPath=./tsconfig.json || true
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Scan Dockerfile') {
+            steps {
+                script {
+                    sh '''
+                        echo "Scanning Main Website Dockerfile..."
+                        hadolint mainwebsite/Dockerfile || true
+                        
+                        echo "Scanning Metrics Dockerfile..."
+                        hadolint metrics/Dockerfile || true
+                    '''
+                }
+            }
+        }
+
+        stage('Scan Dependencies for Vulnerabilities') {
+            steps {
+                script {
+                    sh '''
+                        echo "Scanning Main Website dependencies..."
+                        npm audit --prefix mainwebsite --audit-level=moderate || true
+                        
+                        echo "Scanning Metrics dependencies..."
+                        npm audit --prefix metrics --audit-level=moderate || true
+                    '''
+                }
+            }
+        }
+
+        stage('Build Main Website Image') {
+            steps {
+                script {
+                    dir('mainwebsite') {
+                        sh '''
+                            docker build \
+                                --build-arg NODE_ENV=production \
+                                -t ${MAINWEBSITE_IMAGE_NAME}:${IMAGE_TAG} \
+                                -t ${MAINWEBSITE_IMAGE_NAME}:latest \
+                                -f Dockerfile .
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Build Metrics Image') {
+            steps {
+                script {
+                    dir('metrics') {
+                        sh '''
+                            docker build \
+                                --build-arg NODE_ENV=production \
+                                -t ${METRICS_IMAGE_NAME}:${IMAGE_TAG} \
+                                -t ${METRICS_IMAGE_NAME}:latest \
+                                -f Dockerfile .
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Scan Images for Vulnerabilities') {
+            steps {
+                script {
+                    sh '''
+                        echo "Scanning Main Website image..."
+                        trivy image --severity CRITICAL,HIGH ${MAINWEBSITE_IMAGE_NAME}:${IMAGE_TAG} || true
+                        
+                        echo "Scanning Metrics image..."
+                        trivy image --severity CRITICAL,HIGH ${METRICS_IMAGE_NAME}:${IMAGE_TAG} || true
+                    '''
+                }
+            }
+        }
+
+        stage('Push Main Website Image') {
+            steps {
+                script {
+                    sh '''
+                        docker push ${MAINWEBSITE_IMAGE_NAME}:${IMAGE_TAG}
+                        docker push ${MAINWEBSITE_IMAGE_NAME}:latest
+                    '''
+                }
+            }
+        }
+
+        stage('Push Metrics Image') {
+            steps {
+                script {
+                    sh '''
+                        docker push ${METRICS_IMAGE_NAME}:${IMAGE_TAG}
+                        docker push ${METRICS_IMAGE_NAME}:latest
+                    '''
+                }
+            }
+        }
+
+        stage('Update Kubernetes Manifests') {
+            steps {
+                script {
+                    sh '''
+                        # Update image tags in k8s manifests
+                        sed -i "s|mainwebsite:latest|${MAINWEBSITE_IMAGE_NAME}:${IMAGE_TAG}|g" k8s-manifests/mainwebsite-deployment.yaml
+                        sed -i "s|metrics:latest|${METRICS_IMAGE_NAME}:${IMAGE_TAG}|g" k8s-manifests/metrics-deployment.yaml
+                    '''
+                }
+            }
+        }
+
+        stage('Archive Manifests') {
+            steps {
+                archiveArtifacts artifacts: 'k8s-manifests/**/*.yaml', fingerprint: true
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                sh 'docker logout ${DOCKER_REGISTRY} || true'
+            }
+        }
+        success {
+            echo "Build completed successfully! Image tags: ${IMAGE_TAG}"
+        }
+        failure {
+            echo "Build pipeline failed!"
+        }
+    }
+}

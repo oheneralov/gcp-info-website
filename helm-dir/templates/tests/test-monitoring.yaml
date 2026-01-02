@@ -1,0 +1,54 @@
+{{- if .Values.monitoring.serviceMonitor.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "helm-dir.fullname" . }}-test-monitoring"
+  namespace: {{ .Values.global.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "helm-dir.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  serviceAccountName: default
+  containers:
+    - name: kubectl
+      image: bitnami/kubectl:latest
+      command:
+        - sh
+        - -c
+        - |
+          echo "Verifying ServiceMonitor resources..."
+          
+          {{- if .Values.mainwebsite.enabled }}
+          echo "Checking mainwebsite ServiceMonitor..."
+          kubectl get servicemonitor {{ include "helm-dir.fullname" . }}-mainwebsite -n {{ .Values.global.namespace | default .Release.Namespace }}
+          if [ $? -eq 0 ]; then
+            echo "✓ Mainwebsite ServiceMonitor found"
+            INTERVAL=$(kubectl get servicemonitor {{ include "helm-dir.fullname" . }}-mainwebsite -n {{ .Values.global.namespace | default .Release.Namespace }} -o jsonpath='{.spec.endpoints[0].interval}')
+            PATH=$(kubectl get servicemonitor {{ include "helm-dir.fullname" . }}-mainwebsite -n {{ .Values.global.namespace | default .Release.Namespace }} -o jsonpath='{.spec.endpoints[0].path}')
+            echo "  Interval: $INTERVAL, Path: $PATH"
+          else
+            echo "✗ Mainwebsite ServiceMonitor not found"
+            exit 1
+          fi
+          {{- end }}
+          
+          {{- if .Values.metrics.enabled }}
+          echo "Checking metrics ServiceMonitor..."
+          kubectl get servicemonitor {{ include "helm-dir.fullname" . }}-metrics -n {{ .Values.global.namespace | default .Release.Namespace }}
+          if [ $? -eq 0 ]; then
+            echo "✓ Metrics ServiceMonitor found"
+            INTERVAL=$(kubectl get servicemonitor {{ include "helm-dir.fullname" . }}-metrics -n {{ .Values.global.namespace | default .Release.Namespace }} -o jsonpath='{.spec.endpoints[0].interval}')
+            PATH=$(kubectl get servicemonitor {{ include "helm-dir.fullname" . }}-metrics -n {{ .Values.global.namespace | default .Release.Namespace }} -o jsonpath='{.spec.endpoints[0].path}')
+            echo "  Interval: $INTERVAL, Path: $PATH"
+          else
+            echo "✗ Metrics ServiceMonitor not found"
+            exit 1
+          fi
+          {{- end }}
+          
+          echo "✓ All monitoring resources verified"
+          exit 0
+  restartPolicy: Never
+{{- end }}

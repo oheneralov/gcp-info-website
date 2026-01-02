@@ -1,0 +1,56 @@
+{{- if .Values.rbac.create }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "helm-dir.fullname" . }}-test-rbac"
+  namespace: {{ .Values.global.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "helm-dir.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  serviceAccountName: default
+  containers:
+    - name: kubectl
+      image: bitnami/kubectl:latest
+      command:
+        - sh
+        - -c
+        - |
+          echo "Verifying RBAC resources..."
+          
+          # Check ServiceAccount
+          echo "Checking ServiceAccount..."
+          kubectl get serviceaccount {{ include "helm-dir.serviceAccountName" . }} -n {{ .Values.global.namespace | default .Release.Namespace }}
+          if [ $? -eq 0 ]; then
+            echo "✓ ServiceAccount found"
+          else
+            echo "✗ ServiceAccount not found"
+            exit 1
+          fi
+          
+          # Check ClusterRole
+          echo "Checking ClusterRole..."
+          kubectl get clusterrole {{ include "helm-dir.fullname" . }}
+          if [ $? -eq 0 ]; then
+            echo "✓ ClusterRole found"
+          else
+            echo "✗ ClusterRole not found"
+            exit 1
+          fi
+          
+          # Check ClusterRoleBinding
+          echo "Checking ClusterRoleBinding..."
+          kubectl get clusterrolebinding {{ include "helm-dir.fullname" . }}
+          if [ $? -eq 0 ]; then
+            echo "✓ ClusterRoleBinding found"
+          else
+            echo "✗ ClusterRoleBinding not found"
+            exit 1
+          fi
+          
+          echo "✓ All RBAC resources verified"
+          exit 0
+  restartPolicy: Never
+{{- end }}

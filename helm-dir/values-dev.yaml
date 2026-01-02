@@ -1,0 +1,63 @@
+# Development Environment Values
+# Used for development deployments: helm install -f values-dev.yaml
+# Override the base values.yaml for dev-specific configurations
+
+global:
+  namespace: development
+  labels:
+    environment: dev
+
+mainwebsite:
+  replicaCount: 1
+  
+  image:
+    tag: "dev-latest"
+    pullPolicy: Always
+  
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  autoscaling:
+    enabled: false
+
+metrics:
+  replicaCount: 1
+  
+  image:
+    tag: "dev-latest"
+    pullPolicy: Always
+  
+  resources:
+    limits:
+      cpu: 250m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi
+  
+  autoscaling:
+    enabled: false
+
+podSecurityContext:
+  runAsNonRoot: false
+  runAsUser: 1000
+
+securityContext:
+  allowPrivilegeEscalation: true
+  readOnlyRootFilesystem: false
+
+ingress:
+  enabled: true
+  mainwebsite:
+    hostname: dev.oleksandrdesign.com
+  metrics:
+    hostname: metrics-dev.oleksandrdesign.com
+
+monitoring:
+  serviceMonitor:
+    enabled: false

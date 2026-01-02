@@ -1,0 +1,108 @@
+# Production Environment Values
+# Used for production deployments: helm install -f values-prod.yaml
+# Override the base values.yaml for production-specific configurations
+
+global:
+  namespace: production
+  labels:
+    environment: prod
+
+mainwebsite:
+  replicaCount: 3
+  
+  image:
+    tag: "1.0.0"  # Use explicit version tags in production
+    pullPolicy: IfNotPresent
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/component
+              operator: In
+              values:
+              - mainwebsite
+          topologyKey: kubernetes.io/hostname
+
+metrics:
+  replicaCount: 2
+  
+  image:
+    tag: "1.0.0"  # Use explicit version tags in production
+    pullPolicy: IfNotPresent
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 384Mi
+    requests:
+      cpu: 250m
+      memory: 192Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 75
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+ingress:
+  enabled: true
+  mainwebsite:
+    hostname: oleksandrdesign.com
+  metrics:
+    hostname: metrics.oleksandrdesign.com
+
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+
+# Production-grade node selection
+mainwebsite:
+  nodeSelector:
+    workload-type: application
+
+metrics:
+  nodeSelector:
+    workload-type: monitoring
+
+# Pod Disruption Budgets for high availability
+podDisruptionBudget:
+  enabled: true
+  mainwebsite:
+    minAvailable: 2
+  metrics:
+    minAvailable: 1

@@ -1,0 +1,225 @@
+pipeline {
+    agent any
+
+    parameters {
+        choice(
+            name: 'DEPLOYMENT_ENV',
+            choices: ['staging', 'production'],
+            description: 'Select deployment environment'
+        )
+        string(
+            name: 'IMAGE_TAG',
+            defaultValue: 'latest',
+            description: 'Docker image tag to deploy'
+        )
+    }
+
+    environment {
+        GCP_PROJECT_ID = credentials('gcp-project-id')
+        GCP_REGION = 'us-central1'
+        GKE_CLUSTER_NAME = credentials('gke-cluster-name')
+        GKE_ZONE = credentials('gke-zone')
+        DOCKER_REGISTRY = 'gcr.io'
+        MAINWEBSITE_IMAGE_NAME = "${DOCKER_REGISTRY}/${GCP_PROJECT_ID}/mainwebsite"
+        METRICS_IMAGE_NAME = "${DOCKER_REGISTRY}/${GCP_PROJECT_ID}/metrics"
+        DEPLOYMENT_NAMESPACE = "${params.DEPLOYMENT_ENV}"
+        HELM_RELEASE_NAME = "gcp-info-${params.DEPLOYMENT_ENV}"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Setup GCP Authentication') {
+            steps {
+                script {
+                    sh '''
+                        gcloud auth activate-service-account --key-file=${GOOGLE_APPLICATION_CREDENTIALS}
+                        gcloud config set project ${GCP_PROJECT_ID}
+                        gcloud container clusters get-credentials ${GKE_CLUSTER_NAME} --zone ${GKE_ZONE}
+                    '''
+                }
+            }
+        }
+
+        stage('Verify Images') {
+            steps {
+                script {
+                    sh '''
+                        echo "Verifying Main Website image..."
+                        gcloud container images describe ${MAINWEBSITE_IMAGE_NAME}:${IMAGE_TAG}
+                        
+                        echo "Verifying Metrics image..."
+                        gcloud container images describe ${METRICS_IMAGE_NAME}:${IMAGE_TAG}
+                    '''
+                }
+            }
+        }
+
+        stage('Create/Verify Namespace') {
+            steps {
+                script {
+                    sh '''
+                        kubectl create namespace ${DEPLOYMENT_NAMESPACE} || true
+                        kubectl label namespace ${DEPLOYMENT_NAMESPACE} environment=${DEPLOYMENT_ENV} --overwrite
+                    '''
+                }
+            }
+        }
+
+        stage('Apply Kubernetes Secrets') {
+            steps {
+                script {
+                    sh '''
+                        kubectl create secret generic app-secrets \
+                            --from-literal=db-password=${DB_PASSWORD} \
+                            --from-literal=api-key=${API_KEY} \
+                            -n ${DEPLOYMENT_NAMESPACE} \
+                            --dry-run=client -o yaml | kubectl apply -f -
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy using Helm') {
+            steps {
+                script {
+                    sh '''
+                        helm repo add local ./helm-dir || true
+                        helm repo update
+                        
+                        helm upgrade --install ${HELM_RELEASE_NAME} ./helm-dir \
+                            --namespace ${DEPLOYMENT_NAMESPACE} \
+                            --values helm-dir/values.yaml \
+                            --set image.repository=${MAINWEBSITE_IMAGE_NAME} \
+                            --set image.tag=${IMAGE_TAG} \
+                            --set environment=${DEPLOYMENT_ENV} \
+                            --wait \
+                            --timeout 5m
+                    '''
+                }
+            }
+        }
+
+        stage('Apply Kubernetes Manifests - Services') {
+            steps {
+                script {
+                    sh '''
+                        kubectl apply -f k8s-manifests/mainwebsite-service.yaml -n ${DEPLOYMENT_NAMESPACE}
+                        kubectl apply -f k8s-manifests/metrics-service.yaml -n ${DEPLOYMENT_NAMESPACE}
+                    '''
+                }
+            }
+        }
+
+        stage('Apply Kubernetes Manifests - Deployments') {
+            steps {
+                script {
+                    sh '''
+                        # Update image tags in deployment manifests
+                        cat k8s-manifests/mainwebsite-deployment.yaml | \
+                            sed "s|image: .*mainwebsite:.*|image: ${MAINWEBSITE_IMAGE_NAME}:${IMAGE_TAG}|g" | \
+                            kubectl apply -f - -n ${DEPLOYMENT_NAMESPACE}
+                        
+                        cat k8s-manifests/metrics-deployment.yaml | \
+                            sed "s|image: .*metrics:.*|image: ${METRICS_IMAGE_NAME}:${IMAGE_TAG}|g" | \
+                            kubectl apply -f - -n ${DEPLOYMENT_NAMESPACE}
+                    '''
+                }
+            }
+        }
+
+        stage('Apply Ingress Configuration') {
+            steps {
+                script {
+                    sh '''
+                        kubectl apply -f k8s-manifests/ingress.yaml -n ${DEPLOYMENT_NAMESPACE}
+                    '''
+                }
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                script {
+                    sh '''
+                        echo "Waiting for deployments to be ready..."
+                        kubectl rollout status deployment/mainwebsite -n ${DEPLOYMENT_NAMESPACE} --timeout=5m
+                        kubectl rollout status deployment/metrics -n ${DEPLOYMENT_NAMESPACE} --timeout=5m
+                        
+                        echo "Checking pod status..."
+                        kubectl get pods -n ${DEPLOYMENT_NAMESPACE}
+                        
+                        echo "Checking service endpoints..."
+                        kubectl get svc -n ${DEPLOYMENT_NAMESPACE}
+                    '''
+                }
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                script {
+                    sh '''
+                        # Get the external IP and perform health checks
+                        EXTERNAL_IP=$(kubectl get svc mainwebsite -n ${DEPLOYMENT_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+                        if [ ! -z "$EXTERNAL_IP" ]; then
+                            echo "Testing health endpoint at http://$EXTERNAL_IP/health"
+                            curl -f http://$EXTERNAL_IP/health || echo "Health check completed with warnings"
+                        else
+                            echo "External IP not yet assigned, skipping direct health check"
+                        fi
+                    '''
+                }
+            }
+        }
+
+        stage('Post-Deployment Validation') {
+            steps {
+                script {
+                    sh '''
+                        # Verify resource limits and requests are applied
+                        kubectl describe deployment mainwebsite -n ${DEPLOYMENT_NAMESPACE} | grep -E "Requests|Limits"
+                        kubectl describe deployment metrics -n ${DEPLOYMENT_NAMESPACE} | grep -E "Requests|Limits"
+                        
+                        # Check for any recent pod restarts
+                        echo "Checking for pod issues..."
+                        kubectl get pods -n ${DEPLOYMENT_NAMESPACE} -o wide
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Deployment to ${params.DEPLOYMENT_ENV} completed successfully!"
+            emailext(
+                subject: "Deployment Success: ${params.DEPLOYMENT_ENV}",
+                body: "Successfully deployed image tag ${IMAGE_TAG} to ${params.DEPLOYMENT_ENV}",
+                to: '${DEFAULT_RECIPIENTS}'
+            )
+        }
+        failure {
+            echo "Deployment to ${params.DEPLOYMENT_ENV} failed!"
+            emailext(
+                subject: "Deployment Failed: ${params.DEPLOYMENT_ENV}",
+                body: "Deployment of image tag ${IMAGE_TAG} to ${params.DEPLOYMENT_ENV} failed",
+                to: '${DEFAULT_RECIPIENTS}'
+            )
+        }
+        always {
+            script {
+                // Collect deployment logs for analysis
+                sh '''
+                    kubectl logs -n ${DEPLOYMENT_NAMESPACE} -l app=mainwebsite --tail=100 > mainwebsite-logs.txt || true
+                    kubectl logs -n ${DEPLOYMENT_NAMESPACE} -l app=metrics --tail=100 > metrics-logs.txt || true
+                '''
+                archiveArtifacts artifacts: '*-logs.txt', allowEmptyArchive: true
+            }
+        }
+    }
+}

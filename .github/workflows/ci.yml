@@ -19,18 +19,18 @@ jobs:
           node-version: 18
 
       - name: Clean and install dependencies
-        working-directory: service1
+        working-directory: mainwebsite
         run: |
           rm -rf node_modules package-lock.json
           npm cache clean --force
           npm install --no-audit --no-fund
 
       - name: Run unit tests
-        working-directory: service1
+        working-directory: mainwebsite
         run: npm test
 
       - name: Security check with npm audit
-        working-directory: service1
+        working-directory: mainwebsite
         run: npm audit --audit-level=moderate
 
 
